@@ -1,37 +1,52 @@
-# 라이브러리 임포트
 import random
-import json
-from flask import Flask, request, jsonify, render_template
-import cv2
+import io
 import base64
+from flask import Flask, request, send_file, render_template_string
+import cv2
 import numpy as np
 
 app = Flask(__name__)
 
-# 요청 메서드 설정 (POST)
-@app.route('/', methods=['POST'])
-def process_image():
-    if 'image' not in request.files:
-        return 'No image uploaded', 400
+@app.route('/', methods=['GET', 'POST'])
+def upload_file():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return 'No file uploaded', 400
+        file = request.files['file']
+        image = cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
+        resized_image = resize_image(image, 350, 450)
+        transformed_image = random_color_transform(resized_image)
+        resized_transformed_image = resize_image(transformed_image, 350, 450)
+        _, original_image_buf = cv2.imencode('.jpg', resized_image)
+        _, transformed_image_buf = cv2.imencode('.jpg', resized_transformed_image)
 
-    file = request.files['image']
-    image = cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
-    resized_image = resize_image(image, 350, 450)
-    transformed_image = random_color_transform(resized_image)
-    original_image_buf = cv2.imencode('.jpg', resized_image)
-    transformed_image_buf = cv2.imencode('.jpg', transformed_image)
+        return render_template_string('''
+        <!doctype html>
+        <title>Images Comparison</title>
+        <h1>Images Comparison</h1>
+        <div style="display: flex;">
+          <div style="margin-right: 20px;">
+            <h2>Original Image</h2>
+            <img src="data:image/jpeg;base64,{{ original_image_base64 }}" alt="Original Image">
+          </div>
+          <div>
+            <h2>Transformed Image</h2>
+            <img src="data:image/jpeg;base64,{{ transformed_image_base64 }}" alt="Transformed Image">
+          </div>
+        </div>
+        ''', original_image_base64=base64.b64encode(original_image_buf).decode('utf-8'),
+             transformed_image_base64=base64.b64encode(transformed_image_buf).decode('utf-8'))
+    return '''
+    <!doctype html>
+    <title>Upload Image</title>
+    <h1>Upload Image</h1>
+    <form method=post enctype=multipart/form-data>
+      <input type=file name=file>
+      <input type=submit value=Upload>
+    </form>
+    '''
 
-    original_image_base64 = base64.b64encode(original_image_buf).decode('utf-8')
-    transformed_image_base64 = base64.b64encode(transformed_image_buf).decode('utf-8')
-
-    return jsonify({
-        'originalImage': original_image_base64,
-        'transformedImage': transformed_image_base64,
-    })
-
-# 도우미 함수들
 def random_color_transform(image):
-    # RGB 채널에 랜덤 오프셋 구현
     rows, cols, channels = image.shape
     for channel in range(channels):
         random_shift = random.randint(-100, 100)
@@ -41,8 +56,5 @@ def random_color_transform(image):
 def resize_image(image, width, height):
     return cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
 
-
-
-
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(port=5000, debug=True)
