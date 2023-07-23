@@ -1,60 +1,46 @@
+import os
 import random
-import io
 import base64
-from flask import Flask, request, send_file, render_template_string
-import cv2
-import numpy as np
+from flask import Flask, request, jsonify
+from werkzeug.utils import secure_filename
+from PIL import Image
+import io
 
 app = Flask(__name__)
 
-@app.route('/', methods=['GET', 'POST'])
-def upload_file():
-    if request.method == 'POST':
-        if 'file' not in request.files:
-            return 'No file uploaded', 400
-        file = request.files['file']
-        image = cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
-        resized_image = resize_image(image, 350, 450)
-        transformed_image = random_color_transform(resized_image)
-        resized_transformed_image = resize_image(transformed_image, 350, 450)
-        _, original_image_buf = cv2.imencode('.jpg', resized_image)
-        _, transformed_image_buf = cv2.imencode('.jpg', resized_transformed_image)
+@app.route('/process_image', methods=['POST'])
+def process_image():
+    if 'image' not in request.files:
+        return "No image provided", 400
+    
+    file = request.files['image']
+    original_image = Image.open(file)
+    transformed_image = random_color_transform(original_image)
 
-        return render_template_string('''
-        <!doctype html>
-        <title>Images Comparison</title>
-        <h1>Images Comparison</h1>
-        <div style="display: flex;">
-          <div style="margin-right: 20px;">
-            <h2>Original Image</h2>
-            <img src="data:image/jpeg;base64,{{ original_image_base64 }}" alt="Original Image">
-          </div>
-          <div>
-            <h2>Transformed Image</h2>
-            <img src="data:image/jpeg;base64,{{ transformed_image_base64 }}" alt="Transformed Image">
-          </div>
-        </div>
-        ''', original_image_base64=base64.b64encode(original_image_buf).decode('utf-8'),
-             transformed_image_base64=base64.b64encode(transformed_image_buf).decode('utf-8'))
-    return '''
-    <!doctype html>
-    <title>Upload Image</title>
-    <h1>Upload Image</h1>
-    <form method=post enctype=multipart/form-data>
-      <input type=file name=file>
-      <input type=submit value=Upload>
-    </form>
-    '''
+    _, original_image_buf = io.BytesIO(), io.BytesIO()
+    original_image.save(original_image_buf, format='PNG')
+    _, transformed_image_buf = io.BytesIO(), io.BytesIO()
+    transformed_image.save(transformed_image_buf, format='PNG')
+
+    original_image_base64 = base64.b64encode(original_image_buf.getvalue()).decode('utf-8')
+    transformed_image_base64 = base64.b64encode(transformed_image_buf.getvalue()).decode('utf-8')
+
+    return jsonify({
+        'original_image': original_image_base64,
+        'transformed_image': transformed_image_base64,
+    })
 
 def random_color_transform(image):
-    rows, cols, channels = image.shape
-    for channel in range(channels):
-        random_shift = random.randint(-100, 100)
-        image[:, :, channel] = np.clip(image[:, :, channel] + random_shift, 0, 255)
-    return image
+    r_shift, g_shift, b_shift = random.randint(-100, 100), random.randint(-100, 100), random.randint(-100, 100)
+    
+    def shift(pixel):
+        r, g, b = pixel
+        r = max(min(r + r_shift, 255), 0)
+        g = max(min(g + g_shift, 255), 0)
+        b = max(min(b + b_shift, 255), 0)
+        return r, g, b
 
-def resize_image(image, width, height):
-    return cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
+    return Image.new('RGB', (image.width, image.height), (0, 0, 0)).map(shift, image)
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000)
