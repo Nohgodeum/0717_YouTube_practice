@@ -45,6 +45,10 @@ def upload_file():
       <input type=submit value=Upload>
     </form>
     '''
+@app.route('/some/endpoint')
+def my_endpoint():
+    return "Hello, World!"
+
 
 def random_color_transform(image):
     rows, cols, channels = image.shape
