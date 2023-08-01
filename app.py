@@ -45,7 +45,7 @@ app = Flask(__name__)
 #       <input type=submit value=Upload>
 #     </form>
 #     '''
-@app.route('/')
+@app.route('/', methods=['GET', 'POST'])
 def index():
     return "Hello, World!"
 
